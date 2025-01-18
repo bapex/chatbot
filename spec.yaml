@@ -1,0 +1,107 @@
+# OpenAI Assistant APIを使用したチャットボットの仕様
+
+Assistant設定:
+  name: "AI Assistant"
+  description: "ユーザーフレンドリーで効率的なAIアシスタント"
+  model: "gpt-4-1106-preview"
+  tools:
+    - type: "code_interpreter"  # コードの実行と分析
+    - type: "retrieval"         # ファイルからの情報検索
+    - type: "function"          # カスタム関数の呼び出し
+  file_ids: []                  # アシスタントが参照可能なファイルID
+  metadata: {}                  # カスタムメタデータ
+
+Thread管理:
+  作成:
+    - 新規スレッドの作成
+    - メタデータの付与
+  取得:
+    - スレッドの一覧取得
+    - 特定スレッドの詳細取得
+  削除:
+    - 不要なスレッドの削除
+
+Message処理:
+  作成:
+    - ユーザーメッセージの追加
+    - ファイルの添付
+    - メタデータの設定
+  取得:
+    - スレッド内のメッセージ一覧
+    - メッセージの詳細情報
+
+Run実行管理:
+  実行:
+    - アシスタントの応答生成
+    - ツールの実行
+    - ステップ単位の進行
+  ステータス:
+    - queued: 実行待ち
+    - in_progress: 実行中
+    - requires_action: ツールの呼び出し待ち
+    - completed: 完了
+    - failed: 失敗
+    - cancelled: キャンセル
+  モニタリング:
+    - 実行状態の監視
+    - エラーハンドリング
+    - タイムアウト管理
+
+ファイル管理:
+  サポート形式:
+    - text/plain
+    - text/markdown
+    - application/pdf
+    - application/json
+    - image/jpeg
+    - image/png
+    - image/gif
+  操作:
+    - アップロード
+    - 削除
+    - 一覧取得
+  制限:
+    max_size: "512MB"
+    purpose: "assistants"
+
+エラーハンドリング:
+  API制限:
+    - レート制限の管理
+    - トークン制限の監視
+  エラー種別:
+    - 認証エラー
+    - パラメータエラー
+    - サーバーエラー
+  リトライ:
+    max_attempts: 3
+    backoff: "exponential"
+
+データ永続化:
+  スレッド:
+    - thread_id
+    - created_at
+    - metadata
+  メッセージ:
+    - message_id
+    - thread_id
+    - role
+    - content
+    - file_ids
+    - created_at
+  実行履歴:
+    - run_id
+    - thread_id
+    - assistant_id
+    - status
+    - created_at
+    - completed_at
+
+監視とログ:
+  メトリクス:
+    - API呼び出し回数
+    - 実行時間
+    - 成功/失敗率
+  ログレベル:
+    - INFO: "通常の操作ログ"
+    - WARN: "注意が必要な状態"
+    - ERROR: "エラー発生時の詳細"
