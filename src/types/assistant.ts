@@ -1,3 +1,5 @@
+import { Run } from './openai';
+
 export interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -10,19 +12,23 @@ export interface Thread {
   metadata?: Record<string, any>;
 }
 
-export interface Run {
-  id: string;
-  thread_id: string;
-  assistant_id: string;
-  status: 'queued' | 'in_progress' | 'requires_action' | 'completed' | 'failed' | 'cancelled';
-  created_at: number;
-  completed_at?: number;
-}
-
 export interface AssistantFile {
   id: string;
   bytes: number;
   created_at: number;
   filename: string;
   purpose: 'assistants';
+}
+
+export interface RunEventCallback {
+  onStart?: () => void;
+  onMessage?: (message: AssistantMessage) => void;
+  onStatusChange?: (status: Run['status']) => void;
+  onComplete?: (run: Run) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface StreamConfig {
+  pollInterval?: number;
+  maxRetries?: number;
 }
