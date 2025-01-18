@@ -4,6 +4,13 @@ class ChatBot {
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
         this.chatMessages = document.getElementById('chatMessages');
+        this.apiBaseUrl = 'http://localhost:3000/api';
+        this.currentAssistantMessage = null;
+        this.accumulatedContent = '';
+        this.messageHistory = [];
+        this.isGenerating = false;
+        this.retryCount = 0;
+        this.maxRetries = 3;
 
         this.initialize();
         this.setupEventListeners();
@@ -11,11 +18,7 @@ class ChatBot {
 
     async initialize() {
         try {
-            // アシスタントの初期化
-            await fetch('/api/assistant/init', { method: 'POST' });
-
-            // スレッドの作成
-            const response = await fetch('/api/threads', { method: 'POST' });
+            const response = await fetch(`${this.apiBaseUrl}/threads`, { method: 'POST' });
             const thread = await response.json();
             this.threadId = thread.id;
         } catch (error) {
@@ -43,14 +46,31 @@ class ChatBot {
             this.messageInput.disabled = true;
             this.sendButton.disabled = true;
 
-            // ユーザーメッセージの表示
+            // ユーザーメッセージを追加
             this.addMessage(message, 'user');
+            this.messageHistory.push({ role: 'user', content: message });
 
-            // ローディングインジケータの表示
-            const loadingElement = this.showLoading();
+            // 新しい会話を開始する前に、前の会話が完了していない場合は保持
+            if (!this.isGenerating) {
+                this.currentAssistantMessage = null;
+                this.accumulatedContent = '';
+            }
 
-            // メッセージの送信
-            const response = await fetch(`/api/threads/${this.threadId}/messages`, {
+            await this.streamMessage(message);
+        } catch (error) {
+            console.error('Error sending message:', error);
+            this.showError('メッセージの送信に失敗しました');
+        } finally {
+            this.messageInput.disabled = false;
+            this.sendButton.disabled = false;
+            this.messageInput.focus();
+        }
+    }
+
+    async streamMessage(message, isRetry = false) {
+        try {
+            this.isGenerating = true;
+            const response = await fetch(`${this.apiBaseUrl}/threads/${this.threadId}/messages`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -62,25 +82,87 @@ class ChatBot {
                 throw new Error('メッセージの送信に失敗しました');
             }
 
-            // レスポンスの処理
-            const messages = await response.json();
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            // ローディングインジケータの削除
-            loadingElement.remove();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            // 最新のアシスタントメッセージを表示
-            const assistantMessage = messages.find(msg => msg.role === 'assistant');
-            if (assistantMessage) {
-                this.addMessage(assistantMessage.content, 'assistant');
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith(': keepalive')) continue;
+                    if (line.trim() && line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            this.handleStreamEvent(data);
+                        } catch (error) {
+                            console.error('Error parsing SSE data:', error, line);
+                        }
+                    }
+                }
             }
+
+            this.retryCount = 0;
         } catch (error) {
-            console.error('Error sending message:', error);
-            this.showError('メッセージの送信に失敗しました');
+            console.error('Stream error:', error);
+            if (!isRetry && this.retryCount < this.maxRetries) {
+                this.retryCount++;
+                console.log(`Retrying... (${this.retryCount}/${this.maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * this.retryCount));
+                await this.streamMessage(message, true);
+            } else {
+                this.showError('接続が切断されました');
+            }
         } finally {
-            this.messageInput.disabled = false;
-            this.sendButton.disabled = false;
-            this.messageInput.focus();
+            this.isGenerating = false;
         }
+    }
+
+    handleStreamEvent(data) {
+        switch (data.type) {
+            case 'start':
+                if (!this.isGenerating) {
+                    this.showLoading();
+                }
+                break;
+            case 'message':
+                if (data.message.role === 'assistant') {
+                    this.accumulatedContent = data.message.content;
+                    this.updateAssistantMessage(this.accumulatedContent);
+                }
+                break;
+            case 'error':
+                this.showError(data.error);
+                break;
+            case 'complete':
+                if (this.currentAssistantMessage) {
+                    this.currentAssistantMessage.classList.remove('typing');
+                    this.messageHistory.push({
+                        role: 'assistant',
+                        content: this.accumulatedContent
+                    });
+                }
+                const loadingElement = document.querySelector('.loading');
+                if (loadingElement) {
+                    loadingElement.remove();
+                }
+                break;
+        }
+    }
+
+    updateAssistantMessage(content) {
+        if (!this.currentAssistantMessage) {
+            this.currentAssistantMessage = document.createElement('div');
+            this.currentAssistantMessage.className = 'message assistant typing';
+            this.chatMessages.appendChild(this.currentAssistantMessage);
+        }
+        this.currentAssistantMessage.textContent = content;
+        this.scrollToBottom();
     }
 
     addMessage(content, role) {
@@ -92,6 +174,9 @@ class ChatBot {
     }
 
     showLoading() {
+        const existingLoading = document.querySelector('.loading');
+        if (existingLoading) return;
+
         const loadingElement = document.createElement('div');
         loadingElement.className = 'loading';
         loadingElement.innerHTML = `
@@ -104,7 +189,6 @@ class ChatBot {
         `;
         this.chatMessages.appendChild(loadingElement);
         this.scrollToBottom();
-        return loadingElement;
     }
 
     showError(message) {
@@ -116,11 +200,12 @@ class ChatBot {
     }
 
     scrollToBottom() {
-        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+        requestAnimationFrame(() => {
+            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+        });
     }
 }
 
-// チャットボットのインスタンス化
 document.addEventListener('DOMContentLoaded', () => {
     new ChatBot();
 });
