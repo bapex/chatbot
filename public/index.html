@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>AI Assistant</h1>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <!-- メッセージはここに動的に追加されます -->
+        </div>
+        <div class="chat-input">
+            <textarea
+                id="messageInput"
+                placeholder="メッセージを入力してください..."
+                rows="3"
+            ></textarea>
+            <button id="sendButton">送信</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

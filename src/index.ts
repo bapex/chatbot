@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
 import { AssistantService } from './services/assistant';
 
 // 環境変数の読み込み
@@ -14,6 +15,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use(express.static('public')); // 静的ファイルの提供
 
 // AssistantServiceのインスタンス化
 const assistantService = new AssistantService(process.env.OPENAI_API_KEY!);
@@ -82,16 +84,9 @@ app.get('/api/threads/:threadId/messages', async (req, res) => {
   }
 });
 
-// ファイルのアップロード
-app.post('/api/files', async (req, res) => {
-  try {
-    const { filePath } = req.body;
-    const file = await assistantService.uploadFile(filePath);
-    res.json(file);
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
-  }
+// メインページのルート
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // サーバーの起動
