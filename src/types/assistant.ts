@@ -23,8 +23,8 @@ export interface AssistantFile {
 export interface RunEventCallback {
   onStart?: () => void;
   onMessage?: (message: AssistantMessage) => void;
-  onStatusChange?: (status: Run['status']) => void;
-  onComplete?: (run: Run) => void;
+  onStatusChange?: (status: string) => void;
+  onComplete?: () => void;
   onError?: (error: Error) => void;
 }
 
