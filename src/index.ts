@@ -15,23 +15,10 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
-app.use(express.static('public')); // 静的ファイルの提供
+app.use(express.static('public'));
 
 // AssistantServiceのインスタンス化
 const assistantService = new AssistantService(process.env.OPENAI_API_KEY!);
-
-// APIエンドポイント
-
-// アシスタントの初期化
-app.post('/api/assistant/init', async (req, res) => {
-  try {
-    const assistant = await assistantService.initializeAssistant();
-    res.json(assistant);
-  } catch (error) {
-    console.error('Error initializing assistant:', error);
-    res.status(500).json({ error: 'Failed to initialize assistant' });
-  }
-});
 
 // 新しいスレッドの作成
 app.post('/api/threads', async (req, res) => {
@@ -44,28 +31,60 @@ app.post('/api/threads', async (req, res) => {
   }
 });
 
-// メッセージの送信と応答の取得
+// SSEを使用したメッセージのストリーミング
+app.post('/api/threads/:threadId/messages/stream', async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const { message } = req.body;
+
+    // SSEヘッダーの設定
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+
+    // メッセージの追加
+    await assistantService.addMessage(threadId, message);
+
+    // アシスタントの実行（ストリーミングモード）
+    await assistantService.runAssistant(threadId, {
+      onStart: () => {
+        res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
+      },
+      onStatusChange: (status) => {
+        res.write(`data: ${JSON.stringify({ type: 'status', status })}\n\n`);
+      },
+      onMessage: (message) => {
+        res.write(`data: ${JSON.stringify({ type: 'message', message })}\n\n`);
+      },
+      onComplete: (run) => {
+        res.write(`data: ${JSON.stringify({ type: 'complete', run })}\n\n`);
+        res.end();
+      },
+      onError: (error) => {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+        res.end();
+      }
+    });
+  } catch (error) {
+    console.error('Error processing message:', error);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Failed to process message' })}\n\n`);
+    res.end();
+  }
+});
+
+// 通常のメッセージ送信エンドポイント（後方互換性のため）
 app.post('/api/threads/:threadId/messages', async (req, res) => {
   try {
     const { threadId } = req.params;
     const { message } = req.body;
 
-    // メッセージの追加
     await assistantService.addMessage(threadId, message);
-
-    // アシスタントの実行
     const run = await assistantService.runAssistant(threadId);
 
-    // 実行完了を待機
-    const completedRun = await assistantService.waitForRunCompletion(threadId, run.id);
-
-    if (completedRun.status === 'completed') {
-      // メッセージの取得
-      const messages = await assistantService.getMessages(threadId);
-      res.json(messages);
-    } else {
-      throw new Error(`Run failed with status: ${completedRun.status}`);
-    }
+    const messages = await assistantService.getMessages(threadId);
+    res.json(messages);
   } catch (error) {
     console.error('Error processing message:', error);
     res.status(500).json({ error: 'Failed to process message' });
